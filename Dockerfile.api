@@ -9,7 +9,7 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/package.json
 
 # Install dependencies for the workspace
-RUN npm install --workspaces --include-workspace-root --legacy-peer-deps
+RUN npm install --workspaces --include-workspace-root --legacy-peer-deps --only=production
 
 # Copy backend source code
 WORKDIR /app/apps/api
