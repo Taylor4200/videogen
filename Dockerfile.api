@@ -3,34 +3,39 @@ FROM node:18-alpine AS base
 
 WORKDIR /app
 
-# Copy root package.json and lockfile
+# Install ffmpeg as early as possible to avoid timeouts and layer rebuilds
+RUN apk update && apk add --no-cache --timeout=300 ffmpeg
+
+# Clean npm cache before install for reliability
+RUN npm cache clean --force
+
+# Copy only package files first for better layer caching
 COPY package.json package-lock.json ./
-# Copy workspace package.json
 COPY apps/api/package.json ./apps/api/package.json
 
-# Install dependencies for the workspace
-RUN npm install --workspaces --include-workspace-root --legacy-peer-deps --only=production
+# Install dependencies with verbose logging and error handling
+RUN npm install --workspaces --include-workspace-root --legacy-peer-deps --verbose --no-audit --no-fund 2>&1 | tee npm-install.log || (cat npm-install.log && exit 1)
 
-# Copy backend source code
+# Copy backend source code (after dependencies for optimal caching)
 WORKDIR /app/apps/api
 COPY apps/api .
-
-# Install FFmpeg for video processing
-RUN apk add --no-cache ffmpeg
 
 # Generate Prisma client
 RUN npx prisma generate
 
 # Build the application
-RUN npm run build
+RUN cd apps/api && npm run build
 
 # Production image, copy all the files and run the app
 FROM node:18-alpine AS runner
 WORKDIR /app/apps/api
 
 ENV NODE_ENV production
-RUN apk add --no-cache ffmpeg
 
+# Install ffmpeg in the runner as well
+RUN apk update && apk add --no-cache --timeout=300 ffmpeg
+
+# Copy built app and dependencies from builder
 COPY --from=base /app/node_modules ../../node_modules
 COPY --from=base /app/apps/api/dist ./dist
 COPY --from=base /app/apps/api/package.json ./package.json
