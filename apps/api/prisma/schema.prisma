@@ -1,0 +1,175 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  avatar        String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Subscription & Credits
+  stripeCustomerId String?
+  subscriptionId   String?
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  credits          Credit[]
+  creditBalance    Int @default(0)
+
+  // Content
+  scripts         Script[]
+  videos          Video[]
+  youtubeAccounts YouTubeAccount[]
+
+  // Settings
+  voicePreference String? @default("en-US-Neural2-F")
+  niche           String?
+  keywords        String[]
+
+  @@map("users")
+}
+
+model Credit {
+  id          String      @id @default(cuid())
+  userId      String
+  amount      Int
+  type        CreditType
+  description String?
+  stripePaymentIntentId String?
+  createdAt   DateTime    @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("credits")
+}
+
+model Script {
+  id          String      @id @default(cuid())
+  userId      String
+  title       String
+  content     String
+  niche       String?
+  keywords    String[]
+  length      Int // in seconds
+  status      ScriptStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videos      Video[]
+
+  @@map("scripts")
+}
+
+model Video {
+  id          String      @id @default(cuid())
+  userId      String
+  scriptId    String?
+  title       String
+  description String?
+  tags        String[]
+  duration    Int? // in seconds
+  status      VideoStatus @default(PROCESSING)
+  s3Key       String?
+  s3Url       String?
+  thumbnailS3Key String?
+  thumbnailS3Url String?
+  youtubeVideoId String?
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  script      Script?     @relation(fields: [scriptId], references: [id])
+
+  @@map("videos")
+}
+
+model YouTubeAccount {
+  id              String    @id @default(cuid())
+  userId          String
+  channelId       String
+  channelTitle    String
+  accessToken     String
+  refreshToken    String
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@map("youtube_accounts")
+}
+
+model Job {
+  id          String    @id @default(cuid())
+  type        JobType
+  status      JobStatus @default(PENDING)
+  data        Json
+  result      Json?
+  error       String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("jobs")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  UNPAID
+}
+
+enum CreditType {
+  PURCHASE
+  SUBSCRIPTION
+  REFUND
+  USAGE
+}
+
+enum ScriptStatus {
+  DRAFT
+  GENERATED
+  APPROVED
+  REJECTED
+}
+
+enum VideoStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+  UPLOADED
+  PUBLISHED
+}
+
+enum JobType {
+  SCRIPT_GENERATION
+  AUDIO_GENERATION
+  VIDEO_RENDERING
+  YOUTUBE_UPLOAD
+  THUMBNAIL_GENERATION
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+} 
