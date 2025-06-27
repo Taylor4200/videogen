@@ -3,18 +3,20 @@ FROM node:18-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
-COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+# Copy root package.json and lockfile
+COPY ../../package.json ../../package-lock.json ./
+# Copy workspace package.json
+COPY ./package.json ./apps/api/package.json
+
+# Install dependencies for the workspace
+RUN npm install --workspaces --include-workspace-root --legacy-peer-deps
 
 # Rebuild the source code only when needed
 FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+WORKDIR /app/apps/api
+COPY --from=deps /app/node_modules ../../node_modules
 COPY . .
 
 # Install FFmpeg for video processing
@@ -28,7 +30,7 @@ RUN npm run build
 
 # Production image, copy all the files and run the app
 FROM base AS runner
-WORKDIR /app
+WORKDIR /app/apps/api
 
 ENV NODE_ENV production
 
@@ -40,10 +42,10 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy the built application
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/apps/api/dist ./dist
+COPY --from=builder /app/node_modules ../../node_modules
+COPY --from=builder /app/apps/api/package.json ./package.json
+COPY --from=builder /app/apps/api/prisma ./prisma
 
 # Change ownership of the app directory
 RUN chown -R nextjs:nodejs /app
@@ -54,5 +56,4 @@ EXPOSE 3001
 
 ENV PORT 3001
 
-# Start the application
 CMD ["node", "dist/index.js"] 
